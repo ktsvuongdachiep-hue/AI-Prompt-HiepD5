@@ -8,7 +8,7 @@ import io
 app = Flask(__name__)
 
 # Lấy API từ biến môi trường
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("AI_KEY")
 
 client = genai.Client(api_key=API_KEY)
 
