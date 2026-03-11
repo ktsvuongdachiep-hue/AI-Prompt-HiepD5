@@ -2,15 +2,18 @@ from flask import Flask, request, jsonify
 from google import genai
 from google.genai import types
 import os
-from PIL import Image
-import io
 
 app = Flask(__name__)
 
-# Lấy API từ biến môi trường
+# Lấy API từ biến môi trường Render
 API_KEY = os.getenv("AI_KEY")
 
 client = genai.Client(api_key=API_KEY)
+
+@app.route("/")
+def home():
+    return "AI Prompt Server Running"
+
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -69,6 +72,6 @@ VIETNAMESE:
         })
 
 
-@app.route("/")
-def home():
-    return "AI Prompt Server Running"
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
