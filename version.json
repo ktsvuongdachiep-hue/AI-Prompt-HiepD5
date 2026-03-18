@@ -1,4 +1,5 @@
 {
- "version":"1.0",
- "download":"https://github.com/ktsvuongdachiep-hue/AI-Prompt-HiepD5/releases/download/v1.0/tool.exe"
+  "version": "1.0.2",
+  "url": "https://github.com/ktsvuongdachiep-hue/AI-Prompt-HiepD5/raw/main/release/AI-Prompt-HiepD5_v1.0.2.exe",
+  "force": false
 }
