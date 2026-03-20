@@ -127,39 +127,50 @@ def api_increase_total_used():
     requests.patch(url_get, headers=headers, json={"total_used": used + 1})
     return jsonify({"status": "ok"})
 
-# 4. Lấy số lần dùng trong ngày (Cho thẻ FREE)
+# 4. Lấy số lần dùng trong ngày (Khóa chặt theo MÁY)
 @app.route('/api/get_usage', methods=['GET'])
 def api_get_usage():
-    email = request.args.get('email')
     machine = request.args.get('machine')
     date = request.args.get('date')
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}&machine=eq.{machine}&date=eq.{date}"
     
+    # Chỉ tìm theo machine và date, KHÔNG quan tâm email nào đang đăng nhập
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{date}"
     r = requests.get(url, headers=headers)
     data = r.json()
     
     if len(data) == 0:
-        payload = {"email": email, "machine": machine, "date": date, "used": 0}
-        requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, json=payload)
         return jsonify({"used": 0})
-    return jsonify({"used": data[0]["used"]})
+    
+    # Nếu họ đã lỡ dùng nhiều email trên máy này, cộng dồn tất cả lại
+    total_machine_used = sum(item.get("used", 0) for item in data)
+    return jsonify({"used": total_machine_used})
 
-# 5. Cộng thêm 1 lần dùng trong ngày (Cho thẻ FREE)
+# 5. Cộng thêm 1 lần dùng (Khóa chặt theo MÁY)
 @app.route('/api/increase_usage', methods=['POST'])
 def api_increase_usage():
     data = request.json
-    email, machine, date = data.get('email'), data.get('machine'), data.get('date')
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{email}&machine=eq.{machine}&date=eq.{date}"
+    email = data.get('email')
+    machine = data.get('machine')
+    date = data.get('date')
     
+    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{date}"
     r = requests.get(url, headers=headers)
     db_data = r.json()
     
-    if len(db_data) == 0: return jsonify({"used": 0})
+    if len(db_data) == 0:
+        # Máy này chưa dùng lần nào hôm nay
+        payload = {"email": email, "machine": machine, "date": date, "used": 1}
+        requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, json=payload)
+        return jsonify({"used": 1})
     
-    used = db_data[0]["used"] + 1
-    requests.patch(url, headers=headers, json={"used": used})
-    return jsonify({"used": used})
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Nếu máy này đã từng dùng (dù bằng email nào), lấy record đầu tiên của máy đó để cộng dồn
+    first_record = db_data[0]
+    target_email = first_record["email"]
+    current_used = first_record.get("used", 0)
+    
+    patch_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{target_email}&machine=eq.{machine}&date=eq.{date}"
+    requests.patch(patch_url, headers=headers, json={"used": current_used + 1})
+    
+    # Trả về tổng số lượt của máy
+    total_used = sum(item.get("used", 0) for item in db_data) + 1
+    return jsonify({"used": total_used})
