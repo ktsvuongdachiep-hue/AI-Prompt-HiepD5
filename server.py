@@ -10,13 +10,12 @@ app = Flask(__name__)
 # ==========================================
 # CẤU HÌNH API KEYS
 # ==========================================
-# Lấy API Gemini từ biến môi trường Render
 API_KEY = os.getenv("AI_KEY")
 client = genai.Client(api_key=API_KEY)
 
-# Cấu hình Supabase (Đã giấu an toàn trên Server)
 SUPABASE_URL = "https://wmnlghduybpmxebngqmd.supabase.co"
-SUPABASE_KEY = "sb_publishable_oMxdX_KV-IHC0_-JboPBUA_iaLOKwBF"
+# LƯU Ý: HÃY DÁN CÁI KEY SUPABASE MỚI CỦA BẠN VÀO ĐÂY
+SUPABASE_KEY = "sb_publishable_oMxdX_KV-IHC0_-JboPBUA_iaLOKwBF" 
 SUPABASE_TABLE = "users_usage"
 
 headers = {
@@ -26,19 +25,15 @@ headers = {
     "Prefer": "return=minimal"
 }
 
-# ==========================================
-# API LÕI: TẠO PROMPT D5 RENDER (Giữ nguyên)
-# ==========================================
 @app.route("/")
 def home():
-    return "AI Prompt Server Running"
+    return "AI Prompt Server Running v1.0.4"
 
 @app.route("/generate", methods=["POST"])
 def generate():
     try:
         base_file = request.files["base"]
         ref_file = request.files["ref"]
-
         base_bytes = base_file.read()
         ref_bytes = ref_file.read()
 
@@ -60,31 +55,15 @@ VIETNAMESE:
             model="gemini-2.5-flash",
             contents=[
                 prompt,
-                types.Part.from_bytes(
-                    data=base_bytes,
-                    mime_type="image/jpeg"
-                ),
-                types.Part.from_bytes(
-                    data=ref_bytes,
-                    mime_type="image/jpeg"
-                )
+                types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
+                types.Part.from_bytes(data=ref_bytes, mime_type="image/jpeg")
             ]
         )
-
-        return jsonify({
-            "text": res.text
-        })
-
+        return jsonify({"text": res.text})
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        })
+        return jsonify({"error": str(e)})
 
-# ==========================================
-# API MỚI: QUẢN LÝ USER & LƯỢT DÙNG (SUPABASE)
-# ==========================================
-
-# 1. Kiểm tra gói Free / Pro
+# 1. Kiểm tra gói Free / Pro & Lấy Limit (ĐÃ CẬP NHẬT ĐỂ ĐỌC CỘT credit_limit)
 @app.route('/api/get_user_plan', methods=['GET'])
 def api_get_user_plan():
     email = request.args.get('email')
@@ -92,18 +71,24 @@ def api_get_user_plan():
     r = requests.get(url, headers=headers)
     data = r.json()
     
-    if len(data) == 0: return jsonify({"plan": "free"})
+    if len(data) == 0: return jsonify({"plan": "free", "limit": 5})
     
-    plan = data[0].get("plan", "free")
+    plan = data[0].get("plan", "free").lower()
+    credit_limit = data[0].get("credit_limit")
+    
+    if plan == "pro" and credit_limit is None:
+        credit_limit = 4500
+        
     expire = data[0].get("expire_date")
     
     if plan == "pro" and expire:
         expire = expire.split("T")[0]
         today = datetime.now().date()
         if today > datetime.strptime(expire, "%Y-%m-%d").date():
-            return jsonify({"plan": "free"})
-        return jsonify({"plan": "pro"})
-    return jsonify({"plan": "free"})
+            return jsonify({"plan": "free", "limit": 5})
+        return jsonify({"plan": "pro", "limit": credit_limit})
+        
+    return jsonify({"plan": plan, "limit": credit_limit or 5})
 
 # 2. Lấy tổng số lần đã dùng (Cho thẻ PRO)
 @app.route('/api/get_total_used', methods=['GET'])
@@ -133,7 +118,6 @@ def api_get_usage():
     machine = request.args.get('machine')
     date = request.args.get('date')
     
-    # Chỉ tìm theo machine và date, KHÔNG quan tâm email nào đang đăng nhập
     url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{date}"
     r = requests.get(url, headers=headers)
     data = r.json()
@@ -141,7 +125,6 @@ def api_get_usage():
     if len(data) == 0:
         return jsonify({"used": 0})
     
-    # Nếu họ đã lỡ dùng nhiều email trên máy này, cộng dồn tất cả lại
     total_machine_used = sum(item.get("used", 0) for item in data)
     return jsonify({"used": total_machine_used})
 
@@ -158,12 +141,10 @@ def api_increase_usage():
     db_data = r.json()
     
     if len(db_data) == 0:
-        # Máy này chưa dùng lần nào hôm nay
         payload = {"email": email, "machine": machine, "date": date, "used": 1}
         requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, json=payload)
         return jsonify({"used": 1})
     
-    # Nếu máy này đã từng dùng (dù bằng email nào), lấy record đầu tiên của máy đó để cộng dồn
     first_record = db_data[0]
     target_email = first_record["email"]
     current_used = first_record.get("used", 0)
@@ -171,6 +152,9 @@ def api_increase_usage():
     patch_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{target_email}&machine=eq.{machine}&date=eq.{date}"
     requests.patch(patch_url, headers=headers, json={"used": current_used + 1})
     
-    # Trả về tổng số lượt của máy
     total_used = sum(item.get("used", 0) for item in db_data) + 1
     return jsonify({"used": total_used})
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
