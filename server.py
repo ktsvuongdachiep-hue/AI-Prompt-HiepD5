@@ -32,6 +32,14 @@ def home():
 @app.route("/generate", methods=["POST"])
 def generate():
     try:
+        # ========================================================
+        # THÊM BẢO MẬT: CHẶN TẤT CẢ REQUEST KHÔNG CÓ MẬT LỆNH
+        # ========================================================
+        secret_key = request.headers.get("HiepD5-Secret")
+        if secret_key != "AI-Prompt-HiepD5":
+            return jsonify({"error": "Bị từ chối! Bạn không có quyền truy cập API này."}), 403
+        # ========================================================
+
         base_file = request.files["base"]
         ref_file = request.files["ref"]
         base_bytes = base_file.read()
