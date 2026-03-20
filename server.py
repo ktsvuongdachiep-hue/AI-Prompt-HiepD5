@@ -16,7 +16,7 @@ client = genai.Client(api_key=API_KEY)
 
 # Cấu hình Supabase (Đã giấu an toàn trên Server)
 SUPABASE_URL = "https://wmnlghduybpmxebngqmd.supabase.co"
-SUPABASE_KEY = "sb_publishable_Y12kkCYn5ztL1ai6WJsS8Q_B9_OabYO"
+SUPABASE_KEY = "sb_publishable_oMxdX_KV-IHC0_-JboPBUA_iaLOKwBF"
 SUPABASE_TABLE = "users_usage"
 
 headers = {
