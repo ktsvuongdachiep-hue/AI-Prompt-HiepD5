@@ -30,26 +30,26 @@ headers = {
 def block_spam_bots():
     user_agent = request.headers.get('User-Agent', '').lower()
     if request.path == '/generate':
-        # Chỉ cho phép hiepd5-client-app (Bản 1.0.9 của bác)
         if "hiepd5-client-app" not in user_agent:
             abort(403)
 
 @app.route("/")
 def home():
-    return "AI Prompt Server v1.0.9 (Protected & Auto-Update Usage)"
+    return "AI Prompt Server v1.0.9 (Safe & Gemini 2.0 Enabled)"
 
 # ========================================================
-# 🚀 HÀM GENERATE CHÍNH (ĐÚNG FORM CŨ + TỰ TRỪ LƯỢT)
+# 🚀 HÀM GENERATE CHÍNH (GEMINI 2.0 FLASH + TỰ TRỪ LƯỢT)
 # ========================================================
 @app.route("/generate", methods=["POST"])
 def generate():
     try:
         # --- 1. KIỂM TRA MẬT MÃ (HEADERS) ---
         secret_key = request.headers.get("HiepD5-Secret")
+        # Bác nhớ thay xxxxxxxxx bằng mã bác đã cài dưới Tool nhé
         if secret_key != "HIEPD5RENDERa@":
             return jsonify({"error": "Unauthorized"}), 403
 
-        # --- 2. KIỂM TRA EMAIL & THÔNG TIN MÁY (FORM) ---
+        # --- 2. KIỂM TRA EMAIL & THÔNG TIN MÁY ---
         email = request.form.get('email')
         machine = request.form.get('machine') 
         if not email or "@" not in email:
@@ -59,25 +59,19 @@ def generate():
         base_bytes = request.files["base"].read()
         ref_bytes = request.files["ref"].read()
 
-        # --- 4. CẤU HÌNH SYSTEM PROMPT (MASTER ARCHVIZ) ---
+        # --- 4. CẤU HÌNH SYSTEM PROMPT ---
         SYSTEM_PROMPT = """
-ROLE: You are a world-class architectural visualization director (DoP).
-TASK: Analyze Image 1 (Base Model) for FORM/GEOMETRY and Image 2 (Reference) for STYLE/LIGHTING.
-
-PROCESS:
-1. Identify building type and camera angle from Image 1. Preserve original design.
-2. Extract lighting (time of day), materials, and mood from Image 2.
-3. Synthesize: Apply STYLE from Image 2 onto the FORM of Image 1.
-
-OUTPUT FORMAT (STRICT):
-PROMPT: <Highly detailed English prompt including Subject, Materials, Lighting, Camera, Environment>
-VIETNAMESE: <Professional Vietnamese translation>
-
-QUALITY TAGS: photorealistic, masterpiece, high-end archviz, hyper-detailed, unreal engine 5 style, octane render style, ray tracing.
+ROLE: World-class ArchViz Director.
+TASK: Analyze Image 1 (FORM) and Image 2 (STYLE). 
+OUTPUT: Highly detailed prompt.
+FORMAT: 
+PROMPT: [English]
+VIETNAMESE: [Translation]
 """
 
+        # --- GỌI MODEL AI (ĐÃ SỬA TÊN CHUẨN) ---
         res = client.models.generate_content(
-            model="Gemini 2.5 Flash",
+            model="gemini-2.0-flash", # Tên chuẩn theo thư viện Google GenAI
             contents=[
                 SYSTEM_PROMPT,
                 types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
@@ -111,13 +105,12 @@ QUALITY TAGS: photorealistic, masterpiece, high-end archviz, hyper-detailed, unr
         except Exception as db_err:
             print(f"Lỗi DB: {db_err}")
 
-        print(f"--- SUCCESS: {email} | Prompt Delivered ---")
+        print(f"--- SUCCESS: {email} ---")
         return jsonify({"text": res.text})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Giữ nguyên các hàm API phía dưới của bác...
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
