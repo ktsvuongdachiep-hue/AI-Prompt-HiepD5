@@ -7,215 +7,117 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# ========================================================
-# KHIÊN BẢO VỆ CHỐNG SPAM DDoS (GRAFANA K6, POSTMAN...)
-# ========================================================
-@app.before_request
-def block_spam_bots():
-    # Chỉ áp dụng kiểm tra khi gọi các API tạo ảnh hoặc truy xuất data
-    if request.path.startswith('/generate') or request.path.startswith('/api/'):
-        user_agent = request.headers.get('User-Agent', '').lower()
-        
-        # Danh sách các công cụ Spam và test tải phổ biến
-        bad_agents = ['k6', 'grafana', 'postman', 'curl', 'insomnia']
-        
-        # Nếu phát hiện Tool Spam -> Đuổi ngay (Lỗi 403 Forbidden)
-        if any(bot in user_agent for bot in bad_agents):
-            abort(403)
-            
-        # Thêm 1 lớp bảo vệ: Yêu cầu phải có User-Agent là "hiepd5-client-app" (như trong bản 1.0.8)
-        # Bọn spam bắn mù thường không biết User-Agent này
-        if request.path == '/generate' and user_agent != "hiepd5-client-app":
-            abort(403)
-
 # ==========================================
-# CẤU HÌNH API KEYS
+# 🔑 CẤU HÌNH API KEYS & DATABASE
 # ==========================================
 API_KEY = os.getenv("AI_KEY")
 client = genai.Client(api_key=API_KEY)
 
 SUPABASE_URL = "https://wmnlghduybpmxebngqmd.supabase.co"
-# LƯU Ý: HÃY DÁN CÁI KEY SUPABASE MỚI CỦA BẠN VÀO ĐÂY
 SUPABASE_KEY = "sb_publishable_oMxdX_KV-IHC0_-JboPBUA_iaLOKwBF" 
 SUPABASE_TABLE = "users_usage"
 
 headers = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=minimal"
+    "Content-Type": "application/json"
 }
+
+# ========================================================
+# 🛡️ CHẶN BOT SPAM (BEFORE REQUEST)
+# ========================================================
+@app.before_request
+def block_spam_bots():
+    user_agent = request.headers.get('User-Agent', '').lower()
+    if request.path == '/generate':
+        # Chỉ cho phép hiepd5-client-app (Bản 1.0.9 của bác)
+        if "hiepd5-client-app" not in user_agent:
+            abort(403)
 
 @app.route("/")
 def home():
-    return "AI Prompt Server Running v1.0.5 (Protected)"
+    return "AI Prompt Server v1.0.9 (Protected & Auto-Update Usage)"
 
+# ========================================================
+# 🚀 HÀM GENERATE CHÍNH (ĐÚNG FORM CŨ + TỰ TRỪ LƯỢT)
+# ========================================================
 @app.route("/generate", methods=["POST"])
 def generate():
     try:
-        # ========================================================
-        # ĐÃ THAY ĐỔI MẬT LỆNH BẢO VỆ API CỦA BẠN
-        # ========================================================
+        # --- 1. KIỂM TRA MẬT MÃ (HEADERS) ---
         secret_key = request.headers.get("HiepD5-Secret")
-        if secret_key != "HiepD5-Render-Key-2026!@#":
-            return jsonify({"error": "Bị từ chối! Mật khẩu API đã thay đổi ở bản cập nhật mới."}), 403
-        # ========================================================
+        if secret_key != "HiepD5render-Safe-Zone-2026":
+            return jsonify({"error": "Unauthorized"}), 403
 
-        base_file = request.files["base"]
-        ref_file = request.files["ref"]
-        base_bytes = base_file.read()
-        ref_bytes = ref_file.read()
+        # --- 2. KIỂM TRA EMAIL & THÔNG TIN MÁY (FORM) ---
+        email = request.form.get('email')
+        machine = request.form.get('machine') 
+        if not email or "@" not in email:
+            return jsonify({"error": "Vui lòng dùng bản Tool 1.0.9 mới nhất!"}), 403
 
-        # ==============================================================================
-        # KỊCH BẢN CHUYÊN GIA PROMPT KIẾN TRÚC MÁY CHỦ (System Prompt) CẤP MASTER
-        # ==============================================================================
-        prompt = """
-[BẮT ĐẦU KỊCH BẢN GIẢ LẬP]
+        # --- 3. ĐỌC ẢNH ---
+        base_bytes = request.files["base"].read()
+        ref_bytes = request.files["ref"].read()
 
-**DANH TÍNH CỦA BẠN:**
-Bạn là một Đạo diễn Hình ảnh (DoP) huyền thoại trong ngành diễn họa kiến trúc thế giới. Bạn không chỉ viết chữ, bạn đang "đánh sáng" và "đắp vật liệu" bằng ngôn từ. Nhiệm vụ của bạn là phân tích hai bức ảnh đầu vào và tổng hợp chúng thành một câu lệnh Prompt SIÊU CHI TIẾT, ĐẲNG CẤP CHUYÊN NGHIỆP để ra lệnh cho model AI siêu cấp tạo ra một bức ảnh diễn họa kiến trúc nghệ thuật, photorealistic 100%.
+        # --- 4. CẤU HÌNH SYSTEM PROMPT (MASTER ARCHVIZ) ---
+        SYSTEM_PROMPT = """
+ROLE: You are a world-class architectural visualization director (DoP).
+TASK: Analyze Image 1 (Base Model) for FORM/GEOMETRY and Image 2 (Reference) for STYLE/LIGHTING.
 
-**QUY TRÌNH PHÂN TÍCH:**
+PROCESS:
+1. Identify building type and camera angle from Image 1. Preserve original design.
+2. Extract lighting (time of day), materials, and mood from Image 2.
+3. Synthesize: Apply STYLE from Image 2 onto the FORM of Image 1.
 
-1.Bóc tách Ảnh 1 (Base Model - Khung xương)
-Khi nhìn vào base_bytes (ảnh chụp màn hình Sketchup/Revit của bạn), con AI sẽ quét để tìm hiểu Cấu trúc không gian:
-Đây là công trình gì? (Biệt thự, chung cư, hay nội thất phòng bếp?
-Góc camera đang đặt ở đâu? (Góc nhìn từ dưới lên, chim bay ngắm xuống, hay góc mắt người đi đường?)
-Hình khối chính là gì? (Mái thái, khối hộp chữ nhật, hay vòm cong?)
-Mục đích: Để nó viết prompt giữ nguyên được cái "form" công trình của bạn, không bịa ra một dự án khác.
-2.Bóc tách Ảnh 2 (Reference - Lớp áo & Cảm xúc)
-Tiếp theo, nó chuyển mắt sang ref_bytes (ảnh render mẫu xịn xò bạn thả vào). Ở đây, nó không quan tâm hình khối ngôi nhà trong ảnh này nữa, mà nó "bóc lột" lấy Phong cách nghệ thuật:
-Ánh sáng: Giờ Vàng (Golden hour), âm u (Overcast), sương mù, hay nắng gắt ban trưa? Đèn nội thất màu ấm hay lạnh?
-Môi trường: Xung quanh có cây cỏ gì, đường nhựa có ướt sũng nước mưa không, bầu trời trong xanh hay nhiều mây?
-Vibe (Không khí): Cinematic (điện ảnh), Realistic (chân thực như ảnh chụp), hay Moody (trầm mặc)?
-**BẢN CHẤT CỦA OUTPUT:**
-Pha trộn (Synthesis) và Trả kết quả
-Đây là lúc "ma thuật" diễn ra. Nó lấy hình khối của Ảnh 1, đắp cái ánh sáng và vật liệu của Ảnh 2 lên, rồi dùng vốn từ vựng khổng lồ về ảnh Render để xuất ra một đoạn văn bản miêu tả lại cảnh tượng đó.
-Câu lệnh Prompt tiếng Anh của bạn phải bao gồm đầy đủ 5 yếu tố cốt lõi của một bức ảnh Render chuyên nghiệp:
-1.  **Subject (Chủ thể):** Miêu tả công trình kiến trúc từ Ảnh 1 với phong cách từ Ảnh 2 (ví dụ: "A brutalist concrete villa," "A Scandinavian minimal home").
-2.  **Materials (Vật liệu chi tiết):** Đừng chỉ nói "gỗ", hãy nói "pátina gỗ sồi mài mòn theo thời gian", Đừng chỉ nói "bê tông", hãy nói "bê tông trần thô sơ có vân gỗ coffa" (ví dụ: "aged oak patina," "formwork exposed raw concrete," "reflective floor marble," "anti-reflective low-E glass").
-3.  **Lighting (Ánh sáng - QUAN TRỌNG NHẤT):** Miêu tả chính xác hướng sáng, thời điểm trong ngày và hiệu ứng (ví dụ: "dramatic volumetric light rays," "soft diffuse overcast daylight," "warm golden hour lighting backlighting the building," "ambient occlusion," "global illumination").
-4.  **Camera & Style (Góc chụp & Phong cách):** Xác định loại ống kính và hiệu ứng (ví dụ: "Cinematic shot," "ArchDaily style," "captured on Hasselblad 500CM," "35mm lens," "shallow depth of field," "ultra-detailed," "8k resolution").
-5.  **Environment (Môi trường):** Miêu tả bối cảnh xung quanh (ví dụ: "wet pavement reflecting lights," "dense pine forest fog," "minimalist landscaping," "atmospheric haze").
+OUTPUT FORMAT (STRICT):
+PROMPT: <Highly detailed English prompt including Subject, Materials, Lighting, Camera, Environment>
+VIETNAMESE: <Professional Vietnamese translation>
 
-**THAM SỐ BẮT BUỘC KHÔNG ĐƯỢC QUÊN (Add to English Prompt):**
-Luôn kẹp thêm các từ khóa chất lượng cao vào cuối prompt: ", photorealistic, masterpiece, high-end archviz, architectural photography, hyper-detailed, unreal engine 5 style, octane render style, Ray tracing."
-
-**ĐỊNH DẠNG TRẢ VỀ (QUY ĐỊNH CỨNG):**
-Bạn chỉ được trả về đúng định dạng dưới đây, không có lời dẫn nào khác:
-
-PROMPT:
-<Dán câu lệnh Prompt tiếng Anh siêu chi tiết, technically precise, 8k cấp độ Master vào đây>
-
-VIETNAMESE:
-<Dán bản dịch tiếng Việt mượt mà, văn phong kiến trúc chuyên nghiệp từ câu lệnh tiếng Anh trên vào đây>
-
-[KẾT THÚC KỊCH BẢN GIẢ LẬP]
+QUALITY TAGS: photorealistic, masterpiece, high-end archviz, hyper-detailed, unreal engine 5 style, octane render style, ray tracing.
 """
+
         res = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=[
-                prompt,
+                SYSTEM_PROMPT,
                 types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
                 types.Part.from_bytes(data=ref_bytes, mime_type="image/jpeg")
             ]
         )
+        
+        # --- 5. TỰ ĐỘNG TRỪ LƯỢT TRÊN SERVER ---
+        try:
+            user_url = f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}"
+            user_data = requests.get(user_url, headers=headers).json()
+            
+            plan = "free"
+            if len(user_data) > 0:
+                plan = user_data[0].get("plan", "free").lower()
+
+            if plan == "pro":
+                current_total = user_data[0].get("total_used", 0)
+                requests.patch(user_url, headers=headers, json={"total_used": current_total + 1})
+            else:
+                today = datetime.now().strftime("%Y-%m-%d")
+                usage_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{today}"
+                usage_data = requests.get(usage_url, headers=headers).json()
+                
+                if len(usage_data) == 0:
+                    requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, 
+                                  json={"email": email, "machine": machine, "date": today, "used": 1})
+                else:
+                    curr_used = usage_data[0].get("used", 0)
+                    requests.patch(usage_url, headers=headers, json={"used": curr_used + 1})
+        except Exception as db_err:
+            print(f"Lỗi DB: {db_err}")
+
+        print(f"--- SUCCESS: {email} | Prompt Delivered ---")
         return jsonify({"text": res.text})
+
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 500
 
-# 1. Kiểm tra gói Free / Pro & Lấy Limit (ĐÃ CẬP NHẬT ĐỂ ĐỌC CỘT credit_limit)
-@app.route('/api/get_user_plan', methods=['GET'])
-def api_get_user_plan():
-    email = request.args.get('email')
-    url = f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}"
-    r = requests.get(url, headers=headers)
-    data = r.json()
-    
-    if len(data) == 0: return jsonify({"plan": "free", "limit": 5})
-    
-    plan = data[0].get("plan", "free").lower()
-    credit_limit = data[0].get("credit_limit")
-    
-    if plan == "pro" and credit_limit is None:
-        credit_limit = 4500
-        
-    expire = data[0].get("expire_date")
-    
-    if plan == "pro" and expire:
-        expire = expire.split("T")[0]
-        today = datetime.now().date()
-        if today > datetime.strptime(expire, "%Y-%m-%d").date():
-            return jsonify({"plan": "free", "limit": 5})
-        return jsonify({"plan": "pro", "limit": credit_limit})
-        
-    return jsonify({"plan": plan, "limit": credit_limit or 5})
-
-# 2. Lấy tổng số lần đã dùng (Cho thẻ PRO)
-@app.route('/api/get_total_used', methods=['GET'])
-def api_get_total_used():
-    email = request.args.get('email')
-    url = f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}"
-    r = requests.get(url, headers=headers)
-    data = r.json()
-    if len(data) == 0 or data[0].get("total_used") is None:
-        return jsonify({"used": 0})
-    return jsonify({"used": data[0]["total_used"]})
-
-# 3. Cộng thêm 1 lần dùng (Cho thẻ PRO)
-@app.route('/api/increase_total_used', methods=['POST'])
-def api_increase_total_used():
-    email = request.json.get('email')
-    url_get = f"{SUPABASE_URL}/rest/v1/users?email=eq.{email}"
-    r_get = requests.get(url_get, headers=headers).json()
-    used = 0 if len(r_get) == 0 or r_get[0].get("total_used") is None else r_get[0]["total_used"]
-    
-    requests.patch(url_get, headers=headers, json={"total_used": used + 1})
-    return jsonify({"status": "ok"})
-
-# 4. Lấy số lần dùng trong ngày (Khóa chặt theo MÁY)
-@app.route('/api/get_usage', methods=['GET'])
-def api_get_usage():
-    machine = request.args.get('machine')
-    date = request.args.get('date')
-    
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{date}"
-    r = requests.get(url, headers=headers)
-    data = r.json()
-    
-    if len(data) == 0:
-        return jsonify({"used": 0})
-    
-    total_machine_used = sum(item.get("used", 0) for item in data)
-    return jsonify({"used": total_machine_used})
-
-# 5. Cộng thêm 1 lần dùng (Khóa chặt theo MÁY)
-@app.route('/api/increase_usage', methods=['POST'])
-def api_increase_usage():
-    data = request.json
-    email = data.get('email')
-    machine = data.get('machine')
-    date = data.get('date')
-    
-    url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?machine=eq.{machine}&date=eq.{date}"
-    r = requests.get(url, headers=headers)
-    db_data = r.json()
-    
-    if len(db_data) == 0:
-        payload = {"email": email, "machine": machine, "date": date, "used": 1}
-        requests.post(f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}", headers=headers, json=payload)
-        return jsonify({"used": 1})
-    
-    first_record = db_data[0]
-    target_email = first_record["email"]
-    current_used = first_record.get("used", 0)
-    
-    patch_url = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}?email=eq.{target_email}&machine=eq.{machine}&date=eq.{date}"
-    requests.patch(patch_url, headers=headers, json={"used": current_used + 1})
-    
-    total_used = sum(item.get("used", 0) for item in db_data) + 1
-    return jsonify({"used": total_used})
-
+# Giữ nguyên các hàm API phía dưới của bác...
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
