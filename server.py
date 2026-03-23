@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from google import genai
 from google.genai import types
 import os
@@ -6,6 +6,27 @@ import requests
 from datetime import datetime
 
 app = Flask(__name__)
+
+# ========================================================
+# KHIÊN BẢO VỆ CHỐNG SPAM DDoS (GRAFANA K6, POSTMAN...)
+# ========================================================
+@app.before_request
+def block_spam_bots():
+    # Chỉ áp dụng kiểm tra khi gọi các API tạo ảnh hoặc truy xuất data
+    if request.path.startswith('/generate') or request.path.startswith('/api/'):
+        user_agent = request.headers.get('User-Agent', '').lower()
+        
+        # Danh sách các công cụ Spam và test tải phổ biến
+        bad_agents = ['k6', 'grafana', 'postman', 'curl', 'insomnia']
+        
+        # Nếu phát hiện Tool Spam -> Đuổi ngay (Lỗi 403 Forbidden)
+        if any(bot in user_agent for bot in bad_agents):
+            abort(403)
+            
+        # Thêm 1 lớp bảo vệ: Yêu cầu phải có User-Agent là "hiepd5-client-app" (như trong bản 1.0.8)
+        # Bọn spam bắn mù thường không biết User-Agent này
+        if request.path == '/generate' and user_agent != "hiepd5-client-app":
+            abort(403)
 
 # ==========================================
 # CẤU HÌNH API KEYS
@@ -27,17 +48,17 @@ headers = {
 
 @app.route("/")
 def home():
-    return "AI Prompt Server Running v1.0.4"
+    return "AI Prompt Server Running v1.0.5 (Protected)"
 
 @app.route("/generate", methods=["POST"])
 def generate():
     try:
         # ========================================================
-        # THÊM BẢO MẬT: CHẶN TẤT CẢ REQUEST KHÔNG CÓ MẬT LỆNH
+        # ĐÃ THAY ĐỔI MẬT LỆNH BẢO VỆ API CỦA BẠN
         # ========================================================
         secret_key = request.headers.get("HiepD5-Secret")
-        if secret_key != "AI-Prompt-HiepD5":
-            return jsonify({"error": "Bị từ chối! Bạn không có quyền truy cập API này."}), 403
+        if secret_key != "HiepD5-Render-Key-2026!@#":
+            return jsonify({"error": "Bị từ chối! Mật khẩu API đã thay đổi ở bản cập nhật mới."}), 403
         # ========================================================
 
         base_file = request.files["base"]
