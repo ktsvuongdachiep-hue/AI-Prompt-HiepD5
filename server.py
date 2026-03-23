@@ -46,7 +46,7 @@ def generate():
     try:
         # --- 1. KIỂM TRA MẬT MÃ (HEADERS) ---
         secret_key = request.headers.get("HiepD5-Secret")
-        if secret_key != "HiepD5render-Safe-Zone-2026":
+        if secret_key != "CACBANRANHQUADIHACKTOOL":
             return jsonify({"error": "Unauthorized"}), 403
 
         # --- 2. KIỂM TRA EMAIL & THÔNG TIN MÁY (FORM) ---
