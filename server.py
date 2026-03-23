@@ -75,7 +75,7 @@ VIETNAMESE: [Bản dịch tiếng Việt chi tiết]
 
         # --- GỌI MODEL GEMINI 2.0 FLASH ---
         res = client.models.generate_content(
-            model="gemini-2.0-flash-exp", 
+            model="gemini-1.5-flash", 
             contents=[
                 SYSTEM_PROMPT,
                 types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
