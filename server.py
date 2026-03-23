@@ -71,7 +71,7 @@ VIETNAMESE: [Translation]
 
         # --- GỌI MODEL AI (ĐÃ SỬA TÊN CHUẨN) ---
         res = client.models.generate_content(
-            model="gemini-2.0-flash", # Hiện tại đây là định dạng chuẩn nhất cho bản Flash mới
+            model="gemini-1.5-flash", # Hiện tại đây là định dạng chuẩn nhất cho bản Flash mới
             contents=[
                 SYSTEM_PROMPT,
                 types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
