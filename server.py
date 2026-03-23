@@ -46,7 +46,7 @@ def generate():
     try:
         # --- 1. KIỂM TRA MẬT MÃ (HEADERS) ---
         secret_key = request.headers.get("HiepD5-Secret")
-        if secret_key != "CACBANRANHQUADIHACKTOOL":
+        if secret_key != "HIEPD5RENDERa@":
             return jsonify({"error": "Unauthorized"}), 403
 
         # --- 2. KIỂM TRA EMAIL & THÔNG TIN MÁY (FORM) ---
@@ -77,7 +77,7 @@ QUALITY TAGS: photorealistic, masterpiece, high-end archviz, hyper-detailed, unr
 """
 
         res = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="Gemini 2.5 Flash",
             contents=[
                 SYSTEM_PROMPT,
                 types.Part.from_bytes(data=base_bytes, mime_type="image/jpeg"),
