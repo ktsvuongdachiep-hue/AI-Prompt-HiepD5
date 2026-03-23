@@ -10,7 +10,7 @@ app = Flask(__name__)
 API_KEY = os.getenv("AI_KEY")
 client = genai.Client(api_key=API_KEY)
 SUPABASE_URL = "https://wmnlghduybpmxebngqmd.supabase.co"
-SUPABASE_KEY = "sb_publishable_oMxdX_KV-IHC0_-JboPBUA_iaLOKwBF" 
+SUPABASE_KEY = "sb_publishable_0l0KAvVlm9VMPvl08HoZSA_7UVPGHgF" 
 headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"}
 
 # 🛡️ CHÌA KHÓA TỐI MẬT (Chỉ bác và App biết)
